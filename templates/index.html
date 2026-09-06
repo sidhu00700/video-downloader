@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Universal Video Downloader</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f6;
+            margin: 0; padding: 0;
+            display: flex; justify-content: center; align-items: center;
+            height: 100vh;
+        }
+        .container {
+            background: white; padding: 30px; border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: center;
+            max-width: 500px; width: 90%;
+        }
+        h1 { color: #333; margin-bottom: 5px; font-size: 24px; }
+        .author { color: #777; font-style: italic; margin-bottom: 25px; font-weight: bold; }
+        input[type="text"] {
+            width: 100%; padding: 12px; border: 2px solid #ddd;
+            border-radius: 6px; font-size: 15px; margin-bottom: 15px;
+            outline: none; box-sizing: border-box;
+        }
+        input[type="text"]:focus { border-color: #007bff; }
+        button {
+            background-color: #007bff; color: white; border: none;
+            padding: 12px 25px; font-size: 16px; border-radius: 6px;
+            cursor: pointer; width: 100%; font-weight: bold;
+        }
+        button:hover { background-color: #0056b3; }
+        .result-box { margin-top: 20px; display: none; }
+        .download-btn {
+            background-color: #28a745; display: block; color: white;
+            text-decoration: none; padding: 12px 20px; border-radius: 6px;
+            font-weight: bold; margin-top: 10px; text-align: center;
+        }
+        .download-btn:hover { background-color: #218838; }
+        .loading { display: none; color: #555; font-weight: bold; margin-top: 15px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Social Media Video Downloader</h1>
+    <div class="author">Author: Sidhu</div>
+    
+    <input type="text" id="videoUrl" placeholder="Paste video link here (Insta, TikTok, YT, FB)...">
+    <button id="fetchBtn" onclick="fetchVideo()">Fetch Video</button>
+
+    <div class="loading" id="loading">⚡ Extracting Link... Please wait...</div>
+
+    <div class="result-box" id="resultBox">
+        <p id="videoTitle" style="font-weight: bold; color: #333; word-break: break-word;"></p>
+        <!-- Direct anchor link that triggers file stream directly -->
+        <a id="downloadBtn" class="download-btn" href="#">👇 Download Video Now</a>
+    </div>
+</div>
+
+<script>
+    async function fetchVideo() {
+        const urlInput = document.getElementById('videoUrl');
+        const url = urlInput.value.trim();
+        const loading = document.getElementById('loading');
+        const resultBox = document.getElementById('resultBox');
+        
+        if(!url) {
+            alert('Please paste a link first!');
+            return;
+        }
+
+        loading.style.display = 'block';
+        resultBox.style.display = 'none';
+
+        try {
+            const response = await fetch('/get_download_link', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: url })
+            });
+            
+            const data = await response.json();
+            loading.style.display = 'none';
+
+            if(response.ok && data.download_url) {
+                document.getElementById('videoTitle').innerText = data.title;
+                
+                // Point button to python streaming route directly
+                const dlBtn = document.getElementById('downloadBtn');
+                const streamUrl = `/stream?url=${encodeURIComponent(data.download_url)}&title=${encodeURIComponent(data.title)}`;
+                
+                dlBtn.href = streamUrl;
+                resultBox.style.display = 'block';
+            } else {
+                alert(data.error || 'Failed to fetch video.');
+            }
+        } catch (error) {
+            loading.style.display = 'none';
+            alert('Server error. Make sure Python app is running.');
+        }
+    }
+</script>
+
+</body>
+</html>
