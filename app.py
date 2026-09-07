@@ -11,38 +11,44 @@ def index():
 @app.route('/get-info', methods=['POST'])
 def get_info():
     data = request.get_json()
-    video_url = data.get('url')
+    video_url = data.get('url', '')
 
     if not video_url:
         return jsonify({'error': 'URL provide nahi kiya gaya'}), 400
 
-    # Cloud IP blocking bypass karne ke liye advanced options
+    # Base configuration for yt-dlp
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
         'quiet': True,
         'no_warnings': True,
         'nocheckcertificate': True,
-        'extractor_args': {
-            'youtube': {
-                'player_client': ['ios', 'android', 'web']
-            }
-        },
         'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1',
-            'Accept-Language': 'en-US,en;q=0.9',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         }
     }
+
+    # Special YouTube Bot Bypass Settings
+    if 'youtube.com' in video_url or 'youtu.be' in video_url:
+        ydl_opts['extractor_args'] = {
+            'youtube': {
+                'player_client': ['android', 'ios', 'mweb'],
+                'skip': ['configs', 'webpage']
+            }
+        }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(video_url, download=False)
             
-            # Direct video download stream URL
+            # Handling playlist/formats extraction gracefully
+            if 'entries' in info:
+                info = info['entries'][0]
+
             download_url = info.get('url')
             title = info.get('title', 'video')
 
             if not download_url:
-                return jsonify({'error': 'Video stream extract nahi ho saki'}), 400
+                return jsonify({'error': 'Video stream url nahi mil saka.'}), 400
 
             return jsonify({
                 'title': title,
@@ -50,12 +56,14 @@ def get_info():
             })
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        err_msg = str(e)
+        if 'Sign in to confirm' in err_msg:
+            return jsonify({'error': 'YouTube ne cloud IP ko Temporarily limit kiya hai. TikTok, Instagram aur baqi links test karein!'}), 500
+        return jsonify({'error': err_msg}), 500
 
 
 @app.route('/stream')
 def stream_video():
-    # AJAX / Direct Browser Download Proxy
     target_url = request.args.get('url')
     title = request.args.get('title', 'video')
 
@@ -64,10 +72,9 @@ def stream_video():
 
     try:
         req = requests.get(target_url, stream=True, headers={
-            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         })
         
-        # Browser mein direct download trigger karne ke liye headers
         headers = {
             'Content-Type': req.headers.get('Content-Type', 'video/mp4'),
             'Content-Disposition': f'attachment; filename="{title}.mp4"'
