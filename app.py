@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, Response, jsonify
 import yt_dlp
 import requests
+import os
 
 app = Flask(__name__)
 
@@ -16,7 +17,6 @@ def get_info():
     if not video_url:
         return jsonify({'error': 'URL provide nahi kiya gaya'}), 400
 
-    # Base configuration for yt-dlp
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
         'quiet': True,
@@ -27,20 +27,14 @@ def get_info():
         }
     }
 
-    # Special YouTube Bot Bypass Settings
-    if 'youtube.com' in video_url or 'youtu.be' in video_url:
-        ydl_opts['extractor_args'] = {
-            'youtube': {
-                'player_client': ['android', 'ios', 'mweb'],
-                'skip': ['configs', 'webpage']
-            }
-        }
+    # Agar cookies.txt repository mein mojood ho toh use karein
+    if os.path.exists('cookies.txt'):
+        ydl_opts['cookiefile'] = 'cookies.txt'
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(video_url, download=False)
             
-            # Handling playlist/formats extraction gracefully
             if 'entries' in info:
                 info = info['entries'][0]
 
@@ -48,7 +42,7 @@ def get_info():
             title = info.get('title', 'video')
 
             if not download_url:
-                return jsonify({'error': 'Video stream url nahi mil saka.'}), 400
+                return jsonify({'error': 'Video stream extract nahi ho saki'}), 400
 
             return jsonify({
                 'title': title,
@@ -56,10 +50,7 @@ def get_info():
             })
 
     except Exception as e:
-        err_msg = str(e)
-        if 'Sign in to confirm' in err_msg:
-            return jsonify({'error': 'YouTube ne cloud IP ko Temporarily limit kiya hai. TikTok, Instagram aur baqi links test karein!'}), 500
-        return jsonify({'error': err_msg}), 500
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/stream')
