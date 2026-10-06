@@ -227,35 +227,33 @@ def build_opts(tmpdir, fmt, height):
 
     # ========================================================
     # MP3
-    #
-    # IMPORTANT:
-    # Instead of directly requesting an audio-only stream,
-    # first download a normal compatible media stream.
-    # Then FFmpeg extracts the audio into MP3.
     # ========================================================
 
     if fmt == "mp3":
 
         if not FFMPEG:
 
-            # Without FFmpeg, MP3 conversion cannot be done.
-            # We deliberately fail later with a clear message.
-            opts["format"] = (
-                "b[ext=mp4]/"
-                "b"
-            )
+            opts["format"] = "b"
 
             return opts
 
 
-        # Prefer a normal MP4/progressive stream first.
-        # This follows the same public-video access path
-        # that works for MP4 downloads.
+        # Exact audio formats discovered from YouTube.
+        #
+        # 140 = M4A 129k
+        # 139 = M4A 49k
+        # 251 = WebM/Opus 123k
+        # 250 = WebM/Opus 62k
+        # 249 = WebM/Opus 47k
+        #
+        # Prefer M4A because FFmpeg converts it cleanly.
+
         opts["format"] = (
-
-            "b[ext=mp4]/"
-
-            "b"
+            "140/"
+            "139/"
+            "251/"
+            "250/"
+            "249"
         )
 
 
@@ -271,6 +269,7 @@ def build_opts(tmpdir, fmt, height):
 
         ]
 
+
         return opts
 
 
@@ -280,39 +279,43 @@ def build_opts(tmpdir, fmt, height):
 
     if FFMPEG:
 
-        # ----------------------------------------------------
-        # 1. H264 / AVC1 MP4 + M4A
-        # ----------------------------------------------------
-
         opts["format"] = (
 
+            # ------------------------------------------------
+            # 1. H264 MP4 + M4A
+            # ------------------------------------------------
+
             f"bv*[height<={height}]"
             "[vcodec^=avc1]"
             "[ext=mp4]"
             "+ba[ext=m4a]/"
 
+
             # ------------------------------------------------
-            # 2. H264 + any compatible audio
+            # 2. H264 + ANY compatible audio
             # ------------------------------------------------
 
             f"bv*[height<={height}]"
             "[vcodec^=avc1]"
             "+ba/"
 
+
             # ------------------------------------------------
-            # 3. Any MP4 video + M4A
+            # 3. ANY MP4 video + M4A
             # ------------------------------------------------
 
             f"bv*[height<={height}]"
             "[ext=mp4]"
             "+ba[ext=m4a]/"
 
+
             # ------------------------------------------------
-            # 4. Any compatible video + audio
+            # 4. ANY compatible video + audio
             # ------------------------------------------------
 
             f"bv*[height<={height}]"
             "+ba/"
+
 
             # ------------------------------------------------
             # 5. Single-file MP4
@@ -321,11 +324,13 @@ def build_opts(tmpdir, fmt, height):
             f"b[height<={height}]"
             "[ext=mp4]/"
 
+
             # ------------------------------------------------
             # 6. Any single-file format
             # ------------------------------------------------
 
             f"b[height<={height}]/"
+
 
             # ------------------------------------------------
             # 7. Final fallback
@@ -334,7 +339,9 @@ def build_opts(tmpdir, fmt, height):
             "b"
         )
 
+
         opts["merge_output_format"] = "mp4"
+
 
     else:
 
@@ -347,6 +354,7 @@ def build_opts(tmpdir, fmt, height):
 
             "b"
         )
+
 
     return opts
 
@@ -591,7 +599,7 @@ def download():
 
 
     # ========================================================
-    # MP3 DOES NOT USE QUALITY
+    # MP3 DOES NOT USE RESOLUTION
     # ========================================================
 
     if fmt == "mp3":
@@ -676,7 +684,7 @@ def download():
 
 
         # ====================================================
-        # FIND DOWNLOADED FILES
+        # FIND FILES
         # ====================================================
 
         files = [
@@ -718,7 +726,7 @@ def download():
 
 
         # ====================================================
-        # REMOVE EMPTY FILES
+        # VALID FILES
         # ====================================================
 
         valid_files = [
@@ -740,7 +748,7 @@ def download():
 
 
         # ====================================================
-        # MP3
+        # MP3 FILE
         # ====================================================
 
         if fmt == "mp3":
@@ -758,22 +766,24 @@ def download():
             ]
 
 
-            if mp3_files:
-
-                path = max(
-                    mp3_files,
-                    key=os.path.getsize
-                )
-
-            else:
+            if not mp3_files:
 
                 raise RuntimeError(
                     "MP3 conversion failed."
                 )
 
 
+            path = max(
+
+                mp3_files,
+
+                key=os.path.getsize
+
+            )
+
+
         # ====================================================
-        # MP4
+        # MP4 FILE
         # ====================================================
 
         else:
@@ -794,15 +804,21 @@ def download():
             if mp4_files:
 
                 path = max(
+
                     mp4_files,
+
                     key=os.path.getsize
+
                 )
 
             else:
 
                 path = max(
+
                     valid_files,
+
                     key=os.path.getsize
+
                 )
 
 
@@ -823,7 +839,7 @@ def download():
 
 
         # ====================================================
-        # MIME VALIDATION
+        # MIME
         # ====================================================
 
         if ext not in MIME:
@@ -834,7 +850,7 @@ def download():
 
 
         # ====================================================
-        # FINAL SIZE CHECK
+        # SIZE CHECK
         # ====================================================
 
         if os.path.getsize(path) < 1024:
@@ -854,7 +870,7 @@ def download():
 
 
         # ====================================================
-        # SEND FILE
+        # RESPONSE
         # ====================================================
 
         response = send_file(
@@ -885,10 +901,6 @@ def download():
             "Cache-Control"
         ] = "no-store"
 
-
-        # ====================================================
-        # CLEAN TEMP FILE AFTER DOWNLOAD
-        # ====================================================
 
         response.call_on_close(
             cleanup
@@ -954,7 +966,7 @@ if __name__ == "__main__":
     )
 
     print(
-        "MP3: FFmpeg Audio Extraction"
+        "MP3: YouTube Audio → FFmpeg → MP3"
     )
 
     print("=" * 55)
@@ -974,4 +986,5 @@ if __name__ == "__main__":
         ),
 
         debug=False
+
     )
