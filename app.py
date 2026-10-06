@@ -14,12 +14,13 @@ from yt_dlp.utils import DownloadError
 app = Flask(__name__)
 
 
-# ============================================================
+# =========================================================
 # CONFIG
-# ============================================================
+# =========================================================
 
 MAX_MB = int(os.getenv("MAX_MB", "300"))
 MAX_BYTES = MAX_MB * 1024 * 1024
+
 
 ALLOWED_HOSTS = (
     "youtube.com",
@@ -34,23 +35,30 @@ ALLOWED_HOSTS = (
     "t.co",
 )
 
+
 USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/140.0.0.0 Safari/537.36",
-
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/139.0.0.0 Safari/537.36",
-
-    "Mozilla/5.0 (X11; Linux x86_64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/140.0.0.0 Safari/537.36",
-
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/140.0.0.0 Safari/537.36",
+    (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/140.0.0.0 Safari/537.36"
+    ),
+    (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/139.0.0.0 Safari/537.36"
+    ),
+    (
+        "Mozilla/5.0 (X11; Linux x86_64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/140.0.0.0 Safari/537.36"
+    ),
+    (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/140.0.0.0 Safari/537.36"
+    ),
 ]
+
 
 MIME = {
     "mp4": "video/mp4",
@@ -63,91 +71,92 @@ MIME = {
 }
 
 
-# ============================================================
+# =========================================================
 # FFMPEG
-# ============================================================
+# =========================================================
 
 def find_ffmpeg():
+    """
+    IMPORTANT:
+    Prefer imageio-ffmpeg first.
 
+    The old system ffmpeg found on this PC is from 2013,
+    so using it with modern yt-dlp causes post-processing
+    errors such as:
+
+        Error splitting the argument list: Option not found
+    """
+
+    try:
+        import imageio_ffmpeg
+
+        ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
+
+        if ffmpeg_path and os.path.exists(ffmpeg_path):
+            return ffmpeg_path
+
+    except Exception:
+        pass
+
+    # Fallback to system FFmpeg only if imageio-ffmpeg
+    # is unavailable.
     system_ffmpeg = shutil.which("ffmpeg")
 
     if system_ffmpeg:
         return system_ffmpeg
 
-    try:
-        import imageio_ffmpeg
-
-        return imageio_ffmpeg.get_ffmpeg_exe()
-
-    except Exception:
-        return None
+    return None
 
 
 FFMPEG = find_ffmpeg()
 
 
-# ============================================================
-# HEADERS
-# ============================================================
+# =========================================================
+# HTTP HEADERS
+# =========================================================
 
 def browser_headers():
-
     return {
         "User-Agent": random.choice(USER_AGENTS),
-
         "Accept": (
             "text/html,application/xhtml+xml,application/xml;"
             "q=0.9,image/avif,image/webp,*/*;q=0.8"
         ),
-
         "Accept-Language": "en-US,en;q=0.9",
-
         "Sec-Fetch-Mode": "navigate",
     }
 
 
-# ============================================================
+# =========================================================
 # URL VALIDATION
-# ============================================================
+# =========================================================
 
 def valid_url(url):
-
     try:
-
         parsed = urlparse(url)
 
-        host = (
-            parsed.hostname
-            or ""
-        ).lower()
+        host = (parsed.hostname or "").lower()
 
-        if parsed.scheme not in (
-            "http",
-            "https"
-        ):
+        if parsed.scheme not in ("http", "https"):
             return False
 
         return any(
             host == allowed
-            or host.endswith(
-                "." + allowed
-            )
+            or host.endswith("." + allowed)
             for allowed in ALLOWED_HOSTS
         )
 
     except Exception:
-
         return False
 
 
-# ============================================================
-# DOWNLOAD OPTIONS
-# ============================================================
+# =========================================================
+# YT-DLP OPTIONS
+# =========================================================
 
 def build_opts(tmpdir, fmt, height):
 
     opts = {
-
         "outtmpl": os.path.join(
             tmpdir,
             "%(title).80B [%(id)s].%(ext)s"
@@ -157,53 +166,50 @@ def build_opts(tmpdir, fmt, height):
 
         "noplaylist": True,
 
-        "retries": 8,
-
-        "fragment_retries": 8,
-
+        # Download reliability
+        "retries": 10,
+        "fragment_retries": 10,
         "file_access_retries": 5,
+        "extractor_retries": 5,
 
-        "extractor_retries": 3,
+        "socket_timeout": 60,
 
-        "socket_timeout": 30,
-
+        # Size limit
         "max_filesize": MAX_BYTES,
 
+        # Filename handling
         "restrictfilenames": False,
-
         "windowsfilenames": True,
 
+        # Less terminal noise
         "quiet": True,
-
         "no_warnings": True,
-
         "noprogress": True,
     }
 
 
-    # ========================================================
-    # FFMPEG
-    # ========================================================
+    # -----------------------------------------------------
+    # MODERN FFMPEG
+    # -----------------------------------------------------
 
     if FFMPEG:
-
         opts["ffmpeg_location"] = FFMPEG
 
 
-    # ========================================================
+    # -----------------------------------------------------
     # OPTIONAL PROXY
-    # ========================================================
+    # -----------------------------------------------------
 
     if os.getenv("PROXY_URL"):
-
-        opts["proxy"] = os.getenv(
-            "PROXY_URL"
-        )
+        opts["proxy"] = os.getenv("PROXY_URL")
 
 
-    # ========================================================
+    # -----------------------------------------------------
     # OPTIONAL COOKIES
-    # ========================================================
+    #
+    # Only use this for content the user is authorized
+    # to access.
+    # -----------------------------------------------------
 
     if os.getenv("COOKIES_TXT"):
 
@@ -217,7 +223,6 @@ def build_opts(tmpdir, fmt, height):
             "w",
             encoding="utf-8"
         ) as f:
-
             f.write(
                 os.environ["COOKIES_TXT"]
             )
@@ -225,29 +230,19 @@ def build_opts(tmpdir, fmt, height):
         opts["cookiefile"] = cookies_path
 
 
-    # ========================================================
+    # =====================================================
     # MP3
-    # ========================================================
+    # =====================================================
 
     if fmt == "mp3":
 
         if not FFMPEG:
+            raise RuntimeError(
+                "FFmpeg is required for MP3 conversion."
+            )
 
-            opts["format"] = "b"
-
-            return opts
-
-
-        # Exact audio formats discovered from YouTube.
-        #
-        # 140 = M4A 129k
-        # 139 = M4A 49k
-        # 251 = WebM/Opus 123k
-        # 250 = WebM/Opus 62k
-        # 249 = WebM/Opus 47k
-        #
-        # Prefer M4A because FFmpeg converts it cleanly.
-
+        # Prefer standard YouTube M4A audio.
+        # Then fall back to other audio formats.
         opts["format"] = (
             "140/"
             "139/"
@@ -256,102 +251,81 @@ def build_opts(tmpdir, fmt, height):
             "249"
         )
 
-
         opts["postprocessors"] = [
-
             {
                 "key": "FFmpegExtractAudio",
-
                 "preferredcodec": "mp3",
-
                 "preferredquality": "192",
             }
-
         ]
-
 
         return opts
 
 
-    # ========================================================
-    # MP4 VIDEO
-    # ========================================================
+    # =====================================================
+    # MP4
+    # =====================================================
 
     if FFMPEG:
 
         opts["format"] = (
 
-            # ------------------------------------------------
-            # 1. H264 MP4 + M4A
-            # ------------------------------------------------
+            # -------------------------------------------------
+            # Best H.264 MP4 video + M4A audio
+            # -------------------------------------------------
 
             f"bv*[height<={height}]"
             "[vcodec^=avc1]"
             "[ext=mp4]"
-            "+ba[ext=m4a]/"
+            "+"
+            "ba[ext=m4a]/"
 
-
-            # ------------------------------------------------
-            # 2. H264 + ANY compatible audio
-            # ------------------------------------------------
+            # -------------------------------------------------
+            # H.264 video + any compatible audio
+            # -------------------------------------------------
 
             f"bv*[height<={height}]"
             "[vcodec^=avc1]"
-            "+ba/"
+            "+"
+            "ba/"
 
-
-            # ------------------------------------------------
-            # 3. ANY MP4 video + M4A
-            # ------------------------------------------------
+            # -------------------------------------------------
+            # Any MP4 video + M4A audio
+            # -------------------------------------------------
 
             f"bv*[height<={height}]"
             "[ext=mp4]"
-            "+ba[ext=m4a]/"
+            "+"
+            "ba[ext=m4a]/"
 
-
-            # ------------------------------------------------
-            # 4. ANY compatible video + audio
-            # ------------------------------------------------
+            # -------------------------------------------------
+            # Any compatible video + audio
+            # -------------------------------------------------
 
             f"bv*[height<={height}]"
-            "+ba/"
+            "+"
+            "ba/"
 
-
-            # ------------------------------------------------
-            # 5. Single-file MP4
-            # ------------------------------------------------
+            # -------------------------------------------------
+            # Progressive MP4 fallback
+            # -------------------------------------------------
 
             f"b[height<={height}]"
             "[ext=mp4]/"
 
-
-            # ------------------------------------------------
-            # 6. Any single-file format
-            # ------------------------------------------------
-
             f"b[height<={height}]/"
-
-
-            # ------------------------------------------------
-            # 7. Final fallback
-            # ------------------------------------------------
 
             "b"
         )
 
-
         opts["merge_output_format"] = "mp4"
-
 
     else:
 
         opts["format"] = (
-
             f"b[height<={height}]"
             "[ext=mp4]/"
-
             f"b[height<={height}]/"
-
             "b"
         )
 
@@ -359,14 +333,15 @@ def build_opts(tmpdir, fmt, height):
     return opts
 
 
-# ============================================================
+# =========================================================
 # ERROR CLEANER
-# ============================================================
+# =========================================================
 
 def clean_error(error):
 
     message = str(error)
 
+    # Remove ANSI terminal colors
     message = re.sub(
         r"\x1b\[[0-9;]*m",
         "",
@@ -381,6 +356,10 @@ def clean_error(error):
     lower = message.lower()
 
 
+    # -----------------------------------------------------
+    # Format unavailable
+    # -----------------------------------------------------
+
     if (
         "requested format is not available"
         in lower
@@ -388,51 +367,58 @@ def clean_error(error):
         "requested format not available"
         in lower
     ):
-
         return (
-            "This video does not provide the selected quality. "
-            "Please try the other quality option."
+            "This video does not provide the selected "
+            "quality. Please try the other quality option."
         )
 
+
+    # -----------------------------------------------------
+    # Login / cookies
+    # -----------------------------------------------------
 
     if (
         "sign in" in lower
-        or
-        "login" in lower
-        or
-        "cookies" in lower
+        or "login" in lower
+        or "cookies" in lower
     ):
-
         return (
-            "This video requires login and cannot be accessed "
-            "as a public video."
+            "This video requires login and cannot be "
+            "accessed as a public video."
         )
 
+
+    # -----------------------------------------------------
+    # HTTP 403 / 429
+    # -----------------------------------------------------
 
     if (
         "403" in lower
-        or
-        "429" in lower
-        or
-        "forbidden" in lower
+        or "429" in lower
+        or "forbidden" in lower
     ):
-
         return (
-            "The platform temporarily blocked this request. "
-            "Please try again later."
+            "The platform temporarily blocked this "
+            "request. Please try again."
         )
 
 
+    # -----------------------------------------------------
+    # Private / unavailable
+    # -----------------------------------------------------
+
     if (
         "private" in lower
-        or
-        "unavailable" in lower
+        or "unavailable" in lower
     ):
-
         return (
             "This video is private or unavailable."
         )
 
+
+    # -----------------------------------------------------
+    # File too large
+    # -----------------------------------------------------
 
     if "max-filesize" in lower:
 
@@ -442,6 +428,10 @@ def clean_error(error):
         )
 
 
+    # -----------------------------------------------------
+    # FFmpeg codec problems
+    # -----------------------------------------------------
+
     if (
         "could not find codec parameters"
         in lower
@@ -449,24 +439,42 @@ def clean_error(error):
         "invalid data found"
         in lower
     ):
-
         return (
             "The selected media stream could not be "
             "processed by FFmpeg. Please try again."
         )
 
 
+    # -----------------------------------------------------
+    # FFmpeg missing
+    # -----------------------------------------------------
+
     if (
         "ffmpeg" in lower
         and
         "not found" in lower
     ):
-
         return (
             "FFmpeg is required for MP3 conversion "
             "but was not found."
         )
 
+
+    # -----------------------------------------------------
+    # Post-processing errors
+    # -----------------------------------------------------
+
+    if "postprocessing" in lower:
+
+        return (
+            "Download completed, but FFmpeg could not "
+            "finish the media conversion."
+        )
+
+
+    # -----------------------------------------------------
+    # Generic
+    # -----------------------------------------------------
 
     if not message:
 
@@ -478,9 +486,9 @@ def clean_error(error):
     return lines[-1][:400]
 
 
-# ============================================================
+# =========================================================
 # HOME
-# ============================================================
+# =========================================================
 
 @app.get("/")
 def index():
@@ -491,9 +499,9 @@ def index():
     )
 
 
-# ============================================================
-# HEALTH
-# ============================================================
+# =========================================================
+# HEALTH CHECK
+# =========================================================
 
 @app.get("/health")
 def health():
@@ -503,6 +511,8 @@ def health():
         "status": "ok",
 
         "ffmpeg": bool(FFMPEG),
+
+        "ffmpeg_path": FFMPEG or None,
 
         "max_mb": MAX_MB,
 
@@ -515,13 +525,12 @@ def health():
             "720p",
             "1080p"
         ]
-
     })
 
 
-# ============================================================
-# DOWNLOAD
-# ============================================================
+# =========================================================
+# DOWNLOAD API
+# =========================================================
 
 @app.post("/api/download")
 def download():
@@ -531,19 +540,11 @@ def download():
     ) or {}
 
 
-    # ========================================================
-    # URL
-    # ========================================================
-
     url = (
         data.get("url")
         or ""
     ).strip()
 
-
-    # ========================================================
-    # FORMAT
-    # ========================================================
 
     fmt = (
         data.get("format")
@@ -551,15 +552,15 @@ def download():
     ).lower()
 
 
-    # ========================================================
-    # QUALITY
-    # ========================================================
-
     quality = data.get(
         "quality",
         720
     )
 
+
+    # -----------------------------------------------------
+    # Quality
+    # -----------------------------------------------------
 
     try:
 
@@ -572,9 +573,9 @@ def download():
         height = 720
 
 
-    # ========================================================
-    # ONLY MP4 / MP3
-    # ========================================================
+    # -----------------------------------------------------
+    # Validate format
+    # -----------------------------------------------------
 
     if fmt not in (
         "mp4",
@@ -586,9 +587,9 @@ def download():
         ), 400
 
 
-    # ========================================================
-    # ONLY 720 / 1080
-    # ========================================================
+    # -----------------------------------------------------
+    # Validate quality
+    # -----------------------------------------------------
 
     if height not in (
         720,
@@ -598,50 +599,42 @@ def download():
         height = 720
 
 
-    # ========================================================
-    # MP3 DOES NOT USE RESOLUTION
-    # ========================================================
-
+    # MP3 doesn't use video quality
     if fmt == "mp3":
-
         height = 720
 
 
-    # ========================================================
-    # URL VALIDATION
-    # ========================================================
+    # -----------------------------------------------------
+    # Validate URL
+    # -----------------------------------------------------
 
     if not valid_url(url):
 
         return jsonify(
-
             error=(
                 "Paste a valid YouTube, TikTok, "
                 "Instagram, Facebook or Twitter/X link."
             )
-
         ), 400
 
 
-    # ========================================================
-    # FFMPEG REQUIRED FOR MP3
-    # ========================================================
+    # -----------------------------------------------------
+    # FFmpeg check
+    # -----------------------------------------------------
 
     if fmt == "mp3" and not FFMPEG:
 
         return jsonify(
-
             error=(
                 "MP3 conversion requires FFmpeg. "
                 "Please install or enable FFmpeg."
             )
-
         ), 500
 
 
-    # ========================================================
-    # TEMP DIRECTORY
-    # ========================================================
+    # -----------------------------------------------------
+    # Temporary directory
+    # -----------------------------------------------------
 
     tmpdir = tempfile.mkdtemp(
         prefix="dl_"
@@ -656,11 +649,11 @@ def download():
         )
 
 
-    try:
+    # =====================================================
+    # DOWNLOAD
+    # =====================================================
 
-        # ====================================================
-        # BUILD OPTIONS
-        # ====================================================
+    try:
 
         options = build_opts(
             tmpdir,
@@ -669,9 +662,36 @@ def download():
         )
 
 
-        # ====================================================
-        # DOWNLOAD
-        # ====================================================
+        print()
+        print(
+            "=============================================="
+        )
+        print(
+            "NEW DOWNLOAD"
+        )
+        print(
+            "=============================================="
+        )
+        print(
+            "URL:",
+            url
+        )
+        print(
+            "FORMAT:",
+            fmt
+        )
+        print(
+            "QUALITY:",
+            height
+        )
+        print(
+            "FFMPEG:",
+            FFMPEG
+        )
+        print(
+            "=============================================="
+        )
+
 
         with yt_dlp.YoutubeDL(
             options
@@ -683,9 +703,9 @@ def download():
             )
 
 
-        # ====================================================
-        # FIND FILES
-        # ====================================================
+        # =================================================
+        # FIND OUTPUT FILES
+        # =================================================
 
         files = [
 
@@ -698,23 +718,16 @@ def download():
                 )
             )
 
-            if (
+            if os.path.isfile(file)
 
-                os.path.isfile(file)
-
-                and
-
-                not file.endswith(
-                    (
-                        ".part",
-                        ".ytdl",
-                        ".txt",
-                        ".json"
-                    )
+            and not file.endswith(
+                (
+                    ".part",
+                    ".ytdl",
+                    ".txt",
+                    ".json"
                 )
-
             )
-
         ]
 
 
@@ -725,9 +738,9 @@ def download():
             )
 
 
-        # ====================================================
-        # VALID FILES
-        # ====================================================
+        # =================================================
+        # REMOVE EMPTY FILES
+        # =================================================
 
         valid_files = [
 
@@ -735,8 +748,9 @@ def download():
 
             for file in files
 
-            if os.path.getsize(file) >= 1024
-
+            if os.path.getsize(
+                file
+            ) >= 1024
         ]
 
 
@@ -747,9 +761,9 @@ def download():
             )
 
 
-        # ====================================================
-        # MP3 FILE
-        # ====================================================
+        # =================================================
+        # MP3 OUTPUT
+        # =================================================
 
         if fmt == "mp3":
 
@@ -762,7 +776,6 @@ def download():
                 if file.lower().endswith(
                     ".mp3"
                 )
-
             ]
 
 
@@ -774,17 +787,14 @@ def download():
 
 
             path = max(
-
                 mp3_files,
-
                 key=os.path.getsize
-
             )
 
 
-        # ====================================================
-        # MP4 FILE
-        # ====================================================
+        # =================================================
+        # MP4 OUTPUT
+        # =================================================
 
         else:
 
@@ -797,50 +807,33 @@ def download():
                 if file.lower().endswith(
                     ".mp4"
                 )
-
             ]
 
 
             if mp4_files:
 
                 path = max(
-
                     mp4_files,
-
                     key=os.path.getsize
-
                 )
 
             else:
 
                 path = max(
-
                     valid_files,
-
                     key=os.path.getsize
-
                 )
 
 
-        # ====================================================
-        # EXTENSION
-        # ====================================================
+        # =================================================
+        # FINAL VALIDATION
+        # =================================================
 
-        ext = (
+        ext = path.rsplit(
+            ".",
+            1
+        )[-1].lower()
 
-            path.rsplit(
-                ".",
-                1
-            )[-1]
-
-            .lower()
-
-        )
-
-
-        # ====================================================
-        # MIME
-        # ====================================================
 
         if ext not in MIME:
 
@@ -849,10 +842,6 @@ def download():
             )
 
 
-        # ====================================================
-        # SIZE CHECK
-        # ====================================================
-
         if os.path.getsize(path) < 1024:
 
             raise RuntimeError(
@@ -860,18 +849,14 @@ def download():
             )
 
 
-        # ====================================================
-        # FILENAME
-        # ====================================================
+        # =================================================
+        # SEND FILE
+        # =================================================
 
         filename = os.path.basename(
             path
         )
 
-
-        # ====================================================
-        # RESPONSE
-        # ====================================================
 
         response = send_file(
 
@@ -882,18 +867,15 @@ def download():
             as_attachment=True,
 
             download_name=filename
-
         )
 
 
         response.headers[
             "Content-Disposition"
         ] = (
-
             "attachment; "
             "filename*=UTF-8''"
             + quote(filename)
-
         )
 
 
@@ -902,6 +884,7 @@ def download():
         ] = "no-store"
 
 
+        # Cleanup after response finishes
         response.call_on_close(
             cleanup
         )
@@ -910,11 +893,23 @@ def download():
         return response
 
 
-    # ========================================================
+    # =====================================================
     # YT-DLP ERROR
-    # ========================================================
+    # =====================================================
 
     except DownloadError as error:
+
+        print()
+        print(
+            "================ YT-DLP ERROR ================"
+        )
+        print(
+            str(error)
+        )
+        print(
+            "==============================================="
+        )
+        print()
 
         cleanup()
 
@@ -923,11 +918,23 @@ def download():
         ), 502
 
 
-    # ========================================================
+    # =====================================================
     # GENERAL ERROR
-    # ========================================================
+    # =====================================================
 
     except Exception as error:
+
+        print()
+        print(
+            "=============== BACKEND ERROR ================"
+        )
+        print(
+            repr(error)
+        )
+        print(
+            "=============================================="
+        )
+        print()
 
         cleanup()
 
@@ -936,21 +943,25 @@ def download():
         ), 500
 
 
-# ============================================================
-# START
-# ============================================================
+# =========================================================
+# RUN
+# =========================================================
 
 if __name__ == "__main__":
 
     print()
 
-    print("=" * 55)
+    print(
+        "=" * 55
+    )
 
     print(
         "MASTER VIDEO DOWNLOADER"
     )
 
-    print("=" * 55)
+    print(
+        "=" * 55
+    )
 
     print(
         "FFmpeg:",
@@ -969,7 +980,9 @@ if __name__ == "__main__":
         "MP3: YouTube Audio → FFmpeg → MP3"
     )
 
-    print("=" * 55)
+    print(
+        "=" * 55
+    )
 
     print()
 
@@ -986,5 +999,4 @@ if __name__ == "__main__":
         ),
 
         debug=False
-
     )
