@@ -1,4 +1,5 @@
 Flask
-yt-dlp>=2024.12.13
-bgutil-ytdlp-pot-provider
+yt-dlp
+requests
+gunicorn
 imageio-ffmpeg
