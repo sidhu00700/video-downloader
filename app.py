@@ -79,3 +79,10 @@ def download():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
+    except Exception as e:
+        if cookies_path and os.path.exists(cookies_path):
+            os.remove(cookies_path)
+        err_msg = str(e)
+        if "Video unavailable" in err_msg:
+            return jsonify({'error': 'Yeh video unavailable ya delete ho chuki hai.'}), 400
+        return jsonify({'error': err_msg}), 500
